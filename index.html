@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>変なおじさんシューティング</title>
+<style>
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+-webkit-tap-highlight-color:transparent;
+}
+
+html,body{
+width:100%;
+height:100%;
+overflow:hidden;
+background:#111;
+color:#fff;
+font-family:sans-serif;
+touch-action:none;
+}
+
+.screen{
+position:absolute;
+inset:0;
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+padding:20px;
+text-align:center;
+}
+
+.hidden{
+display:none;
+}
+
+h1{
+margin-bottom:12px;
+}
+
+button{
+min-width:220px;
+padding:18px;
+font-size:22px;
+border:none;
+border-radius:16px;
+background:#ffd400;
+font-weight:bold;
+color:#000;
+margin-top:20px;
+}
+
+#gameScreen{
+padding:0;
+justify-content:flex-start;
+}
+
+#hud{
+width:100%;
+background:#000;
+padding:8px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+font-size:18px;
+font-weight:bold;
+}
+
+#gameArea{
+position:relative;
+width:100%;
+height:calc(100vh - 60px);
+overflow:hidden;
+background:linear-gradient(#222,#000);
+touch-action:none;
+}
+
+.player,.enemy{
+position:absolute;
+display:flex;
+justify-content:center;
+align-items:center;
+user-select:none;
+}
+
+.player{
+font-size:46px;
+width:64px;
+height:64px;
+}
+
+.enemy{
+font-size:64px;
+width:90px;
+height:90px;
+transform-origin:center;
+}
+
+.bullet{
+position:absolute;
+width:8px;
+height:22px;
+background:#00ffff;
+border-radius:10px;
+}
+
+.enemyBullet{
+position:absolute;
+width:12px;
+height:12px;
+background:#ff3333;
+border-radius:50%;
+}
+
+#bossWrap{
+position:absolute;
+top:5px;
+left:50%;
+transform:translateX(-50%);
+width:220px;
+display:flex;
+flex-direction:column;
+align-items:center;
+}
+
+#bossName{
+font-size:14px;
+margin-bottom:4px;
+}
+
+#bossBar{
+width:220px;
+height:18px;
+border:2px solid #fff;
+border-radius:10px;
+overflow:hidden;
+background:#222;
+}
+
+#bossLife{
+height:100%;
+width:100%;
+background:linear-gradient(90deg,#00ff66,#ffff00,#ff3333);
+}
+
+#rank{
+font-size:34px;
+color:gold;
+margin:10px;
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen" class="screen">
+<h1>🕺 変なおじさんシューティング</h1>
+
+<p>
+難易度：むずかしい<br><br>
+
+・30秒間生き残ろう！<br>
+・敵も弾を撃ってくる！<br>
+・自分も攻撃できる！<br>
+・敵弾に1発でも当たるとゲームオーバー！<br>
+・敵に当てると超ふにゃふにゃになる！
+</p>
+
+<button id="startBtn">スタート</button>
+</div>
+
+<div id="gameScreen" class="screen hidden">
+
+<div id="hud">
+<div>スコア: <span id="score">0</span></div>
+<div>残り時間: <span id="time">30</span>秒</div>
+</div>
+
+<div id="gameArea">
+
+<div id="bossWrap">
+<div id="bossName">変なおじさんのライフ</div>
+<div id="bossBar">
+<div id="bossLife"></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div id="resultScreen" class="screen hidden">
+<h1>ゲーム終了</h1>
+
+<div id="finalScore"></div>
+<div id="rank"></div>
+
+<button id="retryBtn">もう一度遊ぶ</button>
+</div>
+
+<script>
+const startScreen=document.getElementById("startScreen");
+const gameScreen=document.getElementById("gameScreen");
+const resultScreen=document.getElementById("resultScreen");
+
+const gameArea=document.getElementById("gameArea");
+
+const scoreEl=document.getElementById("score");
+const timeEl=document.getElementById("time");
+const finalScoreEl=document.getElementById("finalScore");
+const rankEl=document.getElementById("rank");
+
+const bossLifeEl=document.getElementById("bossLife");
+
+let player;
+let enemy;
+
+let bullets=[];
+let enemyBullets=[];
+
+let score=0;
+let timeLeft=30;
+
+let running=false;
+
+let playerX=0;
+let playerY=0;
+
+let enemyX=0;
+let enemyDir=1;
+
+let lastShot=0;
+let lastEnemyShot=0;
+
+let enemyLife=100;
+
+function show(screen){
+startScreen.classList.add("hidden");
+gameScreen.classList.add("hidden");
+resultScreen.classList.add("hidden");
+screen.classList.remove("hidden");
+}
+
+function createPlayer(){
+
+player=document.createElement("div");
+player.className="player";
+player.textContent="🤠";
+
+gameArea.appendChild(player);
+
+playerX=window.innerWidth/2-32;
+playerY=gameArea.clientHeight-120;
+
+updatePlayer();
+}
+
+function createEnemy(){
+
+enemy=document.createElement("div");
+enemy.className="enemy";
+enemy.textContent="🕺";
+
+enemy.style.top="50px";
+
+gameArea.appendChild(enemy);
+
+enemyX=window.innerWidth/2-45;
+enemy.style.left=enemyX+"px";
+}
+
+function updatePlayer(){
+player.style.left=playerX+"px";
+player.style.top=playerY+"px";
+}
+
+function shoot(){
+
+const bullet=document.createElement("div");
+bullet.className="bullet";
+
+let x=playerX+28;
+let y=playerY-10;
+
+bullet.style.left=x+"px";
+bullet.style.top=y+"px";
+
+gameArea.appendChild(bullet);
+
+bullets.push({
+el:bullet,
+x:x,
+y:y
+});
+}
+
+function enemyShoot(){
+
+const bullet=document.createElement("div");
+bullet.className="enemyBullet";
+
+let x=enemyX+45;
+let y=120;
+
+bullet.style.left=x+"px";
+bullet.style.top=y+"px";
+
+gameArea.appendChild(bullet);
+
+let angle=(Math.random()*1.6)-0.8;
+
+enemyBullets.push({
+el:bullet,
+x:x,
+y:y,
+vx:angle*4,
+vy:6+Math.random()*2
+});
+}
+
+function collide(a,b){
+
+return !(
+a.x+a.w<b.x ||
+a.x>b.x+b.w ||
+a.y+a.h<b.y ||
+a.y>b.y+b.h
+);
+}
+
+function getRank(score){
+
+if(score>=120) return "S";
+if(score>=90) return "A";
+if(score>=60) return "B";
+if(score>=30) return "C";
+return "D";
+}
+
+function gameOver(clear){
+
+running=false;
+
+finalScoreEl.textContent="最終スコア : "+score;
+
+rankEl.textContent=
+"ランク : "+getRank(score)+(clear?" ★クリア":"");
+
+show(resultScreen);
+}
+
+function startGame(){
+
+gameArea.querySelectorAll(".player,.enemy,.bullet,.enemyBullet")
+.forEach(e=>e.remove());
+
+bullets=[];
+enemyBullets=[];
+
+score=0;
+timeLeft=30;
+
+enemyLife=100;
+
+scoreEl.textContent=score;
+timeEl.textContent=timeLeft;
+bossLifeEl.style.width="100%";
+
+createPlayer();
+createEnemy();
+
+show(gameScreen);
+
+running=true;
+
+const timer=setInterval(()=>{
+
+if(!running){
+clearInterval(timer);
+return;
+}
+
+timeLeft--;
+
+timeEl.textContent=timeLeft;
+
+if(timeLeft<=0){
+clearInterval(timer);
+gameOver(true);
+}
+
+},1000);
+
+let prev=performance.now();
+
+function loop(now){
+
+if(!running) return;
+
+const dt=(now-prev)/16.67;
+prev=now;
+
+enemyX+=enemyDir*4*dt;
+
+if(enemyX<0){
+enemyX=0;
+enemyDir=1;
+}
+
+if(enemyX>window.innerWidth-90){
+enemyX=window.innerWidth-90;
+enemyDir=-1;
+}
+
+enemy.style.left=enemyX+"px";
+
+if(now-lastEnemyShot>550){
+
+lastEnemyShot=now;
+enemyShoot();
+}
+
+for(let i=bullets.length-1;i>=0;i--){
+
+let b=bullets[i];
+
+b.y-=12*dt;
+
+b.el.style.top=b.y+"px";
+
+if(b.y<-30){
+
+b.el.remove();
+bullets.splice(i,1);
+continue;
+}
+
+if(collide(
+{x:b.x,y:b.y,w:8,h:22},
+{x:enemyX,y:50,w:90,h:90}
+)){
+
+score+=2;
+scoreEl.textContent=score;
+
+enemyLife--;
+
+bossLifeEl.style.width=
+Math.max(0,enemyLife)+"%";
+
+const sx=0.4+Math.random()*2.4;
+const sy=0.2+Math.random()*2.8;
+const rot=-80+Math.random()*160;
+
+enemy.style.transform=
+`scale(${sx},${sy}) rotate(${rot}deg)`;
+
+setTimeout(()=>{
+if(enemy){
+enemy.style.transform="scale(1)";
+}
+},120);
+
+b.el.remove();
+bullets.splice(i,1);
+
+if(enemyLife<=0){
+
+enemyLife=100;
+score+=20;
+scoreEl.textContent=score;
+
+bossLifeEl.style.width="100%";
+
+enemy.style.transform="scale(2,0.3) rotate(720deg)";
+
+setTimeout(()=>{
+if(enemy){
+enemy.style.transform="scale(1)";
+}
+},500);
+}
+}
+}
+
+for(let i=enemyBullets.length-1;i>=0;i--){
+
+let e=enemyBullets[i];
+
+e.x+=e.vx*dt;
+e.y+=e.vy*dt;
+
+e.el.style.left=e.x+"px";
+e.el.style.top=e.y+"px";
+
+if(collide(
+{x:e.x,y:e.y,w:12,h:12},
+{x:playerX,y:playerY,w:64,h:64}
+)){
+gameOver(false);
+return;
+}
+
+if(e.y>gameArea.clientHeight+30){
+
+e.el.remove();
+enemyBullets.splice(i,1);
+}
+}
+
+requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+}
+
+gameArea.addEventListener("pointerdown",e=>{
+
+movePlayer(e);
+
+shoot();
+});
+
+gameArea.addEventListener("pointermove",e=>{
+
+movePlayer(e);
+
+const now=performance.now();
+
+if(now-lastShot>180){
+
+lastShot=now;
+shoot();
+}
+});
+
+function movePlayer(e){
+
+if(!running) return;
+
+const rect=gameArea.getBoundingClientRect();
+
+playerX=e.clientX-rect.left-32;
+playerY=e.clientY-rect.top-32;
+
+playerX=Math.max(
+0,
+Math.min(rect.width-64,playerX)
+);
+
+playerY=Math.max(
+140,
+Math.min(rect.height-64,playerY)
+);
+
+updatePlayer();
+}
+
+document.getElementById("startBtn")
+.addEventListener("click",startGame);
+
+document.getElementById("retryBtn")
+.addEventListener("click",startGame);
+
+</script>
+
+</body>
+</html>
